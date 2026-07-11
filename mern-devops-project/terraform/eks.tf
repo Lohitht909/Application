@@ -2,6 +2,8 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "19.15.1"
 
+  manage_aws_auth_configmap = false
+
   cluster_name                   = local.name
   cluster_endpoint_public_access = true
   enable_irsa = true
@@ -21,12 +23,12 @@ module "eks" {
   subnet_ids               = module.vpc.private_subnets
 
   eks_managed_node_groups = {
-    panda-node = {
+    mern-node = {
       min_size     = 2
       max_size     = 4
       desired_size = 2
 
-      instance_types = ["c7i-flex.large"]
+      instance_types = ["m7i-flex.large"]
       capacity_type  = "SPOT"
 
       tags = {

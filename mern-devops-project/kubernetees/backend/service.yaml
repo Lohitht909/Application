@@ -1,15 +1,16 @@
----
-apiVersion: apps/v1
+apiVersion: v1
 kind: Service
+
 metadata:
   name: backend-service
-  labels:
-    app: backend
+  namespace: mern
+
 spec:
+  type: ClusterIP
+
   selector:
     app: backend
-  ports:  
-  - protocol: TCP
-    port: 3000
+
+  ports:
+  - port: 3000
     targetPort: 3000
-    type: ClusterIP

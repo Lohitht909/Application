@@ -1,0 +1,261 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'AWS_ACCOUNT_ID', defaultValue: '483176634994', description: 'AWS Account ID')
+        string(name: 'AWS_REGION', defaultValue: 'us-east-1', description: 'AWS Region')
+        string(name: 'FRONTEND_REPO', defaultValue: 'mern-frontend', description: 'Frontend ECR Repository')
+        string(name: 'BACKEND_REPO', defaultValue: 'mern-backend', description: 'Backend ECR Repository')
+    }
+
+    tools {
+        jdk 'JDK'
+        nodejs 'NodeJS'
+    }
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        SCANNER_HOME = tool 'SonarQube Scanner'
+    }
+
+    stages {
+
+        stage('1. Checkout Source') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/Lohitht909/Application.git'
+            }
+        }
+
+        stage('2. Verify Tools') {
+            steps {
+                sh '''
+                echo "===== JAVA ====="
+                java -version
+
+                echo "===== NODE ====="
+                node -v
+
+                echo "===== NPM ====="
+                npm -v
+
+                echo "===== DOCKER ====="
+                docker --version
+
+                echo "===== AWS ====="
+                aws --version
+
+                echo "===== TRIVY ====="
+                trivy --version
+                '''
+            }
+        }
+
+        stage('3. SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh """
+                    ${SCANNER_HOME}/bin/sonar-scanner \
+                    -Dsonar.projectKey=Mern-Application \
+                    -Dsonar.projectName=Mern-Application \
+                    -Dsonar.sources=client/app,server \
+                    -Dsonar.exclusions=**/node_modules/**,**/build/**,**/dist/**,**/.git/**,**/coverage/**
+                    """
+                }
+            }
+        }
+
+        stage('4. Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('5. Install Frontend Dependencies') {
+            steps {
+                dir('client') {
+                    sh 'npm ci'
+                }
+            }
+        }
+
+        stage('6. Install Backend Dependencies') {
+            steps {
+                dir('server') {
+                    sh 'npm ci'
+                }
+            }
+        }
+
+        stage('7. Build Frontend') {
+            steps {
+                dir('client') {
+                    sh 'npm run build'
+                }
+            }
+        }
+
+        stage('8. Build Backend Docker Image') {
+            steps {
+                sh '''
+                docker build \
+                -t backend:${BUILD_NUMBER} \
+                -f server/Dockerfile \
+                server
+                '''
+            }
+        }
+
+        stage('9. Build Frontend Docker Image') {
+            steps {
+                sh '''
+                docker build \
+                -t frontend:${BUILD_NUMBER} \
+                -f client/Dockerfile \
+                client
+                '''
+            }
+        }
+
+        stage('10. Trivy Filesystem Scan') {
+            steps {
+                sh '''
+                trivy fs . \
+                --format table \
+                --output trivy-fs-report.txt
+                '''
+                archiveArtifacts artifacts: 'trivy-fs-report.txt', fingerprint: true
+            }
+        }
+
+        stage('11. Trivy Image Scan') {
+            steps {
+                sh '''
+                trivy image backend:${BUILD_NUMBER} \
+                --format table \
+                --output backend-trivy.txt
+
+                trivy image frontend:${BUILD_NUMBER} \
+                --format table \
+                --output frontend-trivy.txt
+                '''
+                archiveArtifacts artifacts: '*.txt', fingerprint: true
+            }
+        }
+
+        stage('12. Create ECR Repositories') {
+            steps {
+
+                withCredentials([
+                    string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'),
+                    string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')
+                ]) {
+
+                    sh '''
+                    aws configure set aws_access_key_id $AWS_ACCESS_KEY
+                    aws configure set aws_secret_access_key $AWS_SECRET_KEY
+
+                    aws ecr describe-repositories \
+                    --repository-names ${FRONTEND_REPO} \
+                    --region ${AWS_REGION} || \
+                    aws ecr create-repository \
+                    --repository-name ${FRONTEND_REPO} \
+                    --region ${AWS_REGION}
+
+                    aws ecr describe-repositories \
+                    --repository-names ${BACKEND_REPO} \
+                    --region ${AWS_REGION} || \
+                    aws ecr create-repository \
+                    --repository-name ${BACKEND_REPO} \
+                    --region ${AWS_REGION}
+                    '''
+                }
+            }
+        }
+
+        stage('13. Login to ECR') {
+
+            steps {
+
+                withCredentials([
+                    string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'),
+                    string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')
+                ]) {
+
+                    sh '''
+                    aws configure set aws_access_key_id $AWS_ACCESS_KEY
+                    aws configure set aws_secret_access_key $AWS_SECRET_KEY
+
+                    aws ecr get-login-password \
+                    --region ${AWS_REGION} | docker login \
+                    --username AWS \
+                    --password-stdin \
+                    ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    '''
+                }
+            }
+        }
+
+        stage('14. Tag Docker Images') {
+            steps {
+
+                sh '''
+                docker tag backend:${BUILD_NUMBER} \
+                ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_REPO}:${BUILD_NUMBER}
+
+                docker tag frontend:${BUILD_NUMBER} \
+                ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_REPO}:${BUILD_NUMBER}
+                '''
+            }
+        }
+
+        stage('15. Push Backend Image') {
+            steps {
+
+                sh '''
+                docker push \
+                ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_REPO}:${BUILD_NUMBER}
+                '''
+            }
+        }
+
+        stage('16. Push Frontend Image') {
+            steps {
+
+                sh '''
+                docker push \
+                ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_REPO}:${BUILD_NUMBER}
+                '''
+            }
+        }
+    }
+
+    post {
+
+        always {
+
+            sh '''
+            docker image rm backend:${BUILD_NUMBER} || true
+            docker image rm frontend:${BUILD_NUMBER} || true
+
+            docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_REPO}:${BUILD_NUMBER} || true
+            docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_REPO}:${BUILD_NUMBER} || true
+            '''
+        }
+
+        success {
+            echo "Pipeline completed successfully."
+        }
+
+        failure {
+            echo "Pipeline failed."
+        }
+    }
+}

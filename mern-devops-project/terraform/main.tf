@@ -72,6 +72,7 @@ resource "aws_instance" "mern-ec2" {
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.mern-sg.id]
   subnet_id              = module.vpc.public_subnets[0]
+  user_data             = file("${path.module}/user.sh")
 
   associate_public_ip_address = true
 
