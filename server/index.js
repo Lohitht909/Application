@@ -14,16 +14,26 @@ const app = express();
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
 app.use(
   helmet({
     contentSecurityPolicy: false,
     frameguard: true
   })
 );
+
 app.use(cors());
 
 setupDB();
 require('./config/passport')(app);
+
+// Health Check Endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'UP'
+  });
+});
+
 app.use(routes);
 
 const server = app.listen(port, () => {
