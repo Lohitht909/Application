@@ -26,7 +26,7 @@ spec:
       containers:
       - name: frontend
 
-        image: 483176634994.dkr.ecr.us-east-1.amazonaws.com/mern-frontend:4
+        image: 483176634994.dkr.ecr.us-east-1.amazonaws.com/mern-frontend:6
         imagePullPolicy: Always
 
         ports:
