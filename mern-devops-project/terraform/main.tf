@@ -89,6 +89,34 @@ resource "aws_instance" "mern-ec2" {
 
 }
 
+resource "aws_ecr_repository" "frontend" {
+  name                 = "mern-frontend"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name        = "mern-frontend"
+    Environment = "dev"
+  }
+}
+
+resource "aws_ecr_repository" "backend" {
+  name                 = "mern-backend"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name        = "mern-backend"
+    Environment = "dev"
+  }
+}
+
 # STEP3: GET EC2 USER NAME AND PUBLIC IP 
 output "SERVER-SSH-ACCESS" {
   value = "ec2-user@${aws_instance.mern-ec2.public_ip}"

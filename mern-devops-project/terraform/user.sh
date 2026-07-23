@@ -14,21 +14,8 @@ systemctl start docker
 # Install Java 17
 dnf install -y java-17-amazon-corretto
 
-# Install Jenkins
-wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
-
-dnf install -y jenkins
-
-systemctl enable jenkins
-systemctl start jenkins
-
-# Add Jenkins to Docker group
-usermod -aG docker jenkins
-systemctl restart jenkins
-
-# Install NodeJS 18
-curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+# Install NodeJS 20
+curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
 dnf install -y nodejs
 
 # Install AWS CLI v2
