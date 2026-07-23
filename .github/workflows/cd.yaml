@@ -1,6 +1,8 @@
 name: MERN CD Pipeline
 
 on:
+  workflow_dispatch:
+
   workflow_run:
     workflows:
       - MERN CI Pipeline
@@ -8,8 +10,8 @@ on:
       - completed
 
 env:
-  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
   AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
   FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
   BACKEND_REPO: ${{ vars.BACKEND_REPO }}
 
@@ -17,12 +19,14 @@ jobs:
 
   deploy:
 
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     runs-on: self-hosted
 
     permissions:
-      contents: read
+      contents: write
 
     steps:
 
@@ -46,29 +50,63 @@ jobs:
         ls -R
 
     ####################################################
-    # Update Backend Image
+    # Determine Image Tag
+    ####################################################
+
+    - name: Set Image Tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "IMAGE_TAG=${{ github.run_number }}" >> $GITHUB_ENV
+        else
+          echo "IMAGE_TAG=${{ github.event.workflow_run.run_number }}" >> $GITHUB_ENV
+        fi
+
+    ####################################################
+    # Display Image Tag
+    ####################################################
+
+    - name: Display Image Tag
+      run: |
+        echo "Deploying Image Tag: $IMAGE_TAG"
+
+    ####################################################
+    # Update Backend Deployment
     ####################################################
 
     - name: Update Backend Image
       run: |
-        sed -i "s|image: .*mern-backend:.*|image: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:${{ github.event.workflow_run.run_number }}|g" backend/deployment.yaml
+        sed -Ei "s|(image: .*mern-backend:).*|\1${IMAGE_TAG}|" backend/deployment.yaml
 
     ####################################################
-    # Update Frontend Image
+    # Update Frontend Deployment
     ####################################################
 
     - name: Update Frontend Image
       run: |
-        sed -i "s|image: .*mern-frontend:.*|image: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:${{ github.event.workflow_run.run_number }}|g" frontend/deployment.yaml
+        sed -Ei "s|(image: .*mern-frontend:).*|\1${IMAGE_TAG}|" frontend/deployment.yaml
 
     ####################################################
-    # Show Updated Images
+    # Verify Updated Images
     ####################################################
 
     - name: Verify Updated Images
       run: |
-        grep image backend/deployment.yaml
-        grep image frontend/deployment.yaml
+        echo "========== Backend =========="
+        grep "image:" backend/deployment.yaml
+
+        echo ""
+
+        echo "========== Frontend =========="
+        grep "image:" frontend/deployment.yaml
+
+    ####################################################
+    # Configure Git
+    ####################################################
+
+    - name: Configure Git
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
 
     ####################################################
     # Commit Changes
@@ -76,14 +114,9 @@ jobs:
 
     - name: Commit Changes
       run: |
-
-        git config user.name "github-actions"
-
-        git config user.email "github-actions@github.com"
-
         git add .
 
-        git commit -m "Deploy build ${{ github.event.workflow_run.run_number }}" || echo "No changes to commit"
+        git commit -m "Deploy build ${IMAGE_TAG}" || echo "No changes to commit"
 
     ####################################################
     # Push Changes
