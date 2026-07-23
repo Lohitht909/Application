@@ -2,7 +2,10 @@ name: MERN CD Pipeline
 
 on:
   workflow_dispatch:
+<<<<<<< HEAD
 
+=======
+>>>>>>> 89dbb72c9aa5142c637c21e7e5d4080c22f67f8b
   workflow_run:
     workflows:
       - MERN CI Pipeline
@@ -19,10 +22,13 @@ jobs:
 
   deploy:
 
+<<<<<<< HEAD
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
 
+=======
+>>>>>>> 89dbb72c9aa5142c637c21e7e5d4080c22f67f8b
     runs-on: self-hosted
 
     permissions:
