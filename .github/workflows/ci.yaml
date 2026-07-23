@@ -131,7 +131,7 @@ jobs:
     - name: Build Frontend Image
       run: |
         docker build \
-          --build-arg API_URL=http://localhost:3000/api \
+          --build-arg API_URL=/api \
           -t frontend:${{ github.run_number }} \
           -f client/Dockerfile \
           client
