@@ -1,0 +1,94 @@
+name: MERN CD Pipeline
+
+on:
+  workflow_run:
+    workflows:
+      - MERN CI Pipeline
+    types:
+      - completed
+
+env:
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
+  BACKEND_REPO: ${{ vars.BACKEND_REPO }}
+
+jobs:
+
+  deploy:
+
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    runs-on: self-hosted
+
+    permissions:
+      contents: read
+
+    steps:
+
+    ####################################################
+    # Checkout GitOps Repository
+    ####################################################
+
+    - name: Checkout GitOps Repository
+      uses: actions/checkout@v4
+      with:
+        repository: Lohitht909/application-gitops
+        token: ${{ secrets.GH_TOKEN }}
+
+    ####################################################
+    # Verify Repository
+    ####################################################
+
+    - name: Verify Repository
+      run: |
+        pwd
+        ls -R
+
+    ####################################################
+    # Update Backend Image
+    ####################################################
+
+    - name: Update Backend Image
+      run: |
+        sed -i "s|image: .*mern-backend:.*|image: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:${{ github.event.workflow_run.run_number }}|g" backend/deployment.yaml
+
+    ####################################################
+    # Update Frontend Image
+    ####################################################
+
+    - name: Update Frontend Image
+      run: |
+        sed -i "s|image: .*mern-frontend:.*|image: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:${{ github.event.workflow_run.run_number }}|g" frontend/deployment.yaml
+
+    ####################################################
+    # Show Updated Images
+    ####################################################
+
+    - name: Verify Updated Images
+      run: |
+        grep image backend/deployment.yaml
+        grep image frontend/deployment.yaml
+
+    ####################################################
+    # Commit Changes
+    ####################################################
+
+    - name: Commit Changes
+      run: |
+
+        git config user.name "github-actions"
+
+        git config user.email "github-actions@github.com"
+
+        git add .
+
+        git commit -m "Deploy build ${{ github.event.workflow_run.run_number }}" || echo "No changes to commit"
+
+    ####################################################
+    # Push Changes
+    ####################################################
+
+    - name: Push Changes
+      run: |
+        git push
